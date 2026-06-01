@@ -1,0 +1,16 @@
+# PyInstaller
+*.exe
+*.spec
+build/
+dist/
+
+# Runtime files
+*.log
+Close_ExWin_config.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude Code
+.claude/
