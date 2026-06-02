@@ -204,13 +204,31 @@ def install_hooks():
 
 _EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
 
+_scan_cooldown      = {}   # hwnd -> last_handled_time
+_scan_cooldown_lock = threading.Lock()
+SCAN_COOLDOWN_SEC   = 10.0
+
+def _scan_check(hwnd):
+    """回傳 True 表示可以處理（並記錄時間）；False 表示冷卻中，跳過"""
+    now = time.time()
+    with _scan_cooldown_lock:
+        if now - _scan_cooldown.get(hwnd, 0) < SCAN_COOLDOWN_SEC:
+            return False
+        _scan_cooldown[hwnd] = now
+        # 清除已消失視窗的記錄
+        dead = [h for h, t in _scan_cooldown.items()
+                if now - t > SCAN_COOLDOWN_SEC * 2 and not user32.IsWindow(h)]
+        for h in dead:
+            del _scan_cooldown[h]
+        return True
+
 def _do_enum_scan():
     def _cb(hwnd, _):
         if user32.IsWindowVisible(hwnd):
             title = get_title(hwnd)
             if title:
                 rule = find_rule(title)
-                if rule:
+                if rule and _scan_check(hwnd):
                     threading.Thread(
                         target=do_action,
                         args=(hwnd, title, rule["action"]),
