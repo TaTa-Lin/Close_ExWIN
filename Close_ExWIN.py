@@ -228,8 +228,7 @@ def _on_win_event(hHook, event, hwnd, idObject, idChild, dwThread, dwTime):
         if not title:
             return
         rule = find_rule(title)
-        if rule:
-            # 用子執行緒執行，避免在 Hook 回呼裡阻塞
+        if rule and _scan_check(hwnd):
             threading.Thread(
                 target=do_action,
                 args=(hwnd, title, rule["action"]),
