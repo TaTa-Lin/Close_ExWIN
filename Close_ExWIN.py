@@ -200,8 +200,11 @@ def do_action(hwnd, title, action):
     if delay > 0:
         time.sleep(delay)
         cur_title = get_title(hwnd)
-        if not user32.IsWindowVisible(hwnd) or cur_title != title:
-            log(f"已跳過（視窗消失或標題已變）：{title!r} → {cur_title!r}  hwnd={hwnd:#010x}")
+        if not user32.IsWindowVisible(hwnd):
+            log(f"不動作（視窗已消失）：{title!r}  hwnd={hwnd:#010x}")
+            return
+        if cur_title != title:
+            log(f"不動作（標題已變）：{title!r} → {cur_title!r}  hwnd={hwnd:#010x}")
             return
     log(f"處理：{title}  動作：{action}  hwnd={hwnd:#010x}")
     try:
