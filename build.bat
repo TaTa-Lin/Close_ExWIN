@@ -5,21 +5,26 @@ echo  Close_ExWin - EXE 打包腳本
 echo ========================================
 echo.
 
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [錯誤] 找不到 Python，請先安裝 Python 3.8+
+cd /d "%~dp0"
+
+set PYTHON=D:\Anaconda3\envs\WinTool\python.exe
+set PIP=D:\Anaconda3\envs\WinTool\Scripts\pip.exe
+set PYINSTALLER=D:\Anaconda3\envs\WinTool\Scripts\pyinstaller.exe
+
+if not exist "%PYTHON%" (
+    echo [錯誤] 找不到 WinTool 環境：%PYTHON%
     pause & exit /b 1
 )
 
 echo [1/3] 安裝必要套件...
-pip install pyinstaller pywin32 pystray pillow -q
+"%PIP%" install pyinstaller pywin32 pystray pillow -q
 if errorlevel 1 (
     echo [錯誤] 套件安裝失敗
     pause & exit /b 1
 )
 
 echo [2/3] 打包 EXE...
-pyinstaller --onefile --windowed --clean --name "Close_ExWin" Close_ExWin.py
+"%PYINSTALLER%" --onefile --windowed --clean --name "Close_ExWin" Close_ExWIN.py
 if errorlevel 1 (
     echo [錯誤] 打包失敗
     pause & exit /b 1
