@@ -204,8 +204,7 @@ def install_hooks():
 
 _EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
 
-def scan_existing_windows():
-    """掃描並處理啟動前已存在的視窗"""
+def _do_enum_scan():
     def _cb(hwnd, _):
         if user32.IsWindowVisible(hwnd):
             title = get_title(hwnd)
@@ -219,7 +218,21 @@ def scan_existing_windows():
                     ).start()
         return True
     user32.EnumWindows(_EnumWindowsProc(_cb), 0)
+
+def scan_existing_windows():
+    """掃描並處理啟動前已存在的視窗"""
+    _do_enum_scan()
     log("已掃描現有視窗")
+
+def _periodic_scan():
+    """每 2 秒掃描一次，補抓 Hook 漏掉的視窗（如 Excel OLE 等待對話框）"""
+    while True:
+        time.sleep(2)
+        if not is_paused():
+            try:
+                _do_enum_scan()
+            except Exception:
+                pass
 
 def uninstall_hooks():
     for h in _hook_handles:
@@ -469,6 +482,8 @@ if __name__ == "__main__":
         log("Hook 安裝失敗，程式終止")
 
     scan_existing_windows()
+
+    threading.Thread(target=_periodic_scan, daemon=True).start()
 
     # 訊息迴圈跑在子執行緒
     msg_thread = threading.Thread(target=run_message_loop, daemon=True)
