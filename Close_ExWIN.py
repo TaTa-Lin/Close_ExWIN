@@ -195,15 +195,16 @@ def click_ok_button(hwnd) -> bool:
 def do_action(hwnd, title, action):
     parent_hwnd = user32.GetParent(hwnd)
     parent_title = get_title(parent_hwnd) if parent_hwnd else ""
-    log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}")
+    log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}  hwnd={hwnd:#010x}")
     log(f"  動作：{action}  延遲：{get_action_delay()} 秒")
     delay = get_action_delay()
     if delay > 0:
         time.sleep(delay)
-        if not user32.IsWindowVisible(hwnd) or get_title(hwnd) != title:
-            log(f"已跳過（視窗消失或標題已變）：{title}")
+        cur_title = get_title(hwnd)
+        if not user32.IsWindowVisible(hwnd) or cur_title != title:
+            log(f"已跳過（視窗消失或標題已變）：{title!r} → {cur_title!r}  hwnd={hwnd:#010x}")
             return
-    log(f"處理：{title}  動作：{action}")
+    log(f"處理：{title}  動作：{action}  hwnd={hwnd:#010x}")
     try:
         if action == "close":
             user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
