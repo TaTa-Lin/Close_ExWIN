@@ -30,7 +30,7 @@ LOG_FILE    = os.path.join(BASE_DIR, "Close_ExWin.log")
 # ── 預設設定 ────────────────────────────────────────────────
 DEFAULT_CONFIG = {
     "enable_log": True,
-    "action_delay": 3,
+    "action_delay": 15,
     "rules": [
         {"title": "Microsoft Excel",        "match": "exact",    "action": "enter",         "enabled": True},
         {"title": "檔案使用中",              "match": "exact",    "action": "tab_tab_enter", "enabled": True},
