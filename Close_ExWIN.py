@@ -196,7 +196,6 @@ def do_action(hwnd, title, action):
     parent_hwnd = user32.GetParent(hwnd)
     parent_title = get_title(parent_hwnd) if parent_hwnd else ""
     log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}  hwnd={hwnd:#010x}")
-    log(f"  動作：{action}  延遲：{get_action_delay()} 秒")
     delay = get_action_delay()
     if delay > 0:
         time.sleep(delay)
