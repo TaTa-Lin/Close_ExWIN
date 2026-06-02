@@ -30,6 +30,7 @@ LOG_FILE    = os.path.join(BASE_DIR, "Close_ExWin.log")
 # ── 預設設定 ────────────────────────────────────────────────
 DEFAULT_CONFIG = {
     "enable_log": True,
+    "action_delay": 3,
     "rules": [
         {"title": "Microsoft Excel",        "match": "exact",    "action": "enter",         "enabled": True},
         {"title": "檔案使用中",              "match": "exact",    "action": "tab_tab_enter", "enabled": True},
@@ -88,6 +89,18 @@ def set_log_enabled(val: bool):
     global _enable_log
     with _enable_log_lock:
         _enable_log = val
+
+_action_delay      = 3
+_action_delay_lock = threading.Lock()
+
+def set_action_delay(val: int):
+    global _action_delay
+    with _action_delay_lock:
+        _action_delay = max(0, int(val))
+
+def get_action_delay():
+    with _action_delay_lock:
+        return _action_delay
 
 # ── Win32 常數與型別 ────────────────────────────────────────
 user32   = ctypes.windll.user32
@@ -150,6 +163,12 @@ def press_key(hwnd, vk):
     time.sleep(0.05)
 
 def do_action(hwnd, title, action):
+    delay = get_action_delay()
+    if delay > 0:
+        time.sleep(delay)
+        if not user32.IsWindowVisible(hwnd) or get_title(hwnd) != title:
+            log(f"已跳過（視窗消失或標題已變）：{title}")
+            return
     log(f"處理：{title}  動作：{action}")
     try:
         if action == "close":
@@ -362,6 +381,13 @@ def _settings_window():
     log_var = tk.BooleanVar(value=cfg.get("enable_log", True))
     ttk.Checkbutton(opt_frame, text="記錄 Log（Close_ExWin.log）", variable=log_var).pack(anchor="w")
 
+    delay_row = ttk.Frame(opt_frame)
+    delay_row.pack(anchor="w", pady=(4,0))
+    ttk.Label(delay_row, text="動作延遲（秒）：").pack(side="left")
+    delay_var = tk.IntVar(value=cfg.get("action_delay", 3))
+    ttk.Spinbox(delay_row, from_=0, to=30, textvariable=delay_var, width=5).pack(side="left")
+    ttk.Label(delay_row, text="（視窗出現後等待幾秒再動作，0 = 立即）").pack(side="left", padx=(6,0))
+
     # ── 規則清單 ──
     list_frame = ttk.LabelFrame(root, text="視窗規則", padding=8)
     list_frame.pack(fill="both", expand=True, padx=8, pady=6)
@@ -473,6 +499,8 @@ def _settings_window():
     def save_and_close():
         cfg["enable_log"] = log_var.get()
         set_log_enabled(cfg["enable_log"])
+        cfg["action_delay"] = delay_var.get()
+        set_action_delay(cfg["action_delay"])
         with _config_lock:
             _config.clear()
             _config.update(cfg)
@@ -492,6 +520,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     set_log_enabled(_config.get("enable_log", True))
+    set_action_delay(_config.get("action_delay", 3))
     log("Close_ExWin 啟動（WinEvent Hook 模式）")
     if install_hooks() == 0:
         user32.MessageBoxW(0,
