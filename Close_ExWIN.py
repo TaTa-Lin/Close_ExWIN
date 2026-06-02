@@ -109,8 +109,10 @@ kernel32 = ctypes.windll.kernel32
 WM_CLOSE   = 0x0010
 WM_KEYDOWN = 0x0100
 WM_KEYUP   = 0x0101
+BM_CLICK   = 0x00F5
 VK_RETURN  = 0x0D
 VK_TAB     = 0x09
+IDOK       = 1
 
 EVENT_SYSTEM_FOREGROUND   = 0x0003
 EVENT_OBJECT_SHOW         = 0x8002
@@ -162,7 +164,32 @@ def press_key(hwnd, vk):
     user32.PostMessageW(hwnd, WM_KEYUP,   vk, lp_up)
     time.sleep(0.05)
 
+def click_ok_button(hwnd) -> bool:
+    """直接對「確定」按鈕送出 BM_CLICK，不需前景視窗。"""
+    # 方法 1：標準對話框 IDOK（ID=1）子視窗
+    ok_hwnd = user32.GetDlgItem(hwnd, IDOK)
+    if ok_hwnd:
+        user32.PostMessageW(ok_hwnd, BM_CLICK, 0, 0)
+        return True
+    # 方法 2：列舉子視窗，找文字為「確定」或「OK」的按鈕
+    found: list[int] = [0]
+    def _cb(child: int, _: int) -> bool:
+        buf = ctypes.create_unicode_buffer(64)
+        user32.GetWindowTextW(child, buf, 64)
+        if buf.value in ("確定", "OK"):
+            found[0] = child
+            return False
+        return True
+    user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
+    if found[0]:
+        user32.PostMessageW(found[0], BM_CLICK, 0, 0)
+        return True
+    return False
+
 def do_action(hwnd, title, action):
+    parent_hwnd = user32.GetParent(hwnd)
+    parent_title = get_title(parent_hwnd) if parent_hwnd else ""
+    log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}  動作：{action}")
     delay = get_action_delay()
     if delay > 0:
         time.sleep(delay)
@@ -174,7 +201,9 @@ def do_action(hwnd, title, action):
         if action == "close":
             user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         elif action == "enter":
-            press_key(hwnd, VK_RETURN)
+            # 優先用 BM_CLICK 直點按鈕（對 OLE 等待對話框更可靠）
+            if not click_ok_button(hwnd):
+                press_key(hwnd, VK_RETURN)
         elif action == "tab_tab_enter":
             press_key(hwnd, VK_TAB)
             press_key(hwnd, VK_TAB)
@@ -222,6 +251,7 @@ def install_hooks():
     return len(_hook_handles)
 
 _EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+_ChildEnumProc   = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
 
 _scan_cooldown      = {}   # hwnd -> last_handled_time
 _scan_cooldown_lock = threading.Lock()
