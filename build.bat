@@ -43,4 +43,5 @@ if exist dist  rmdir /s /q dist
 echo.
 echo  Close_ExWin.exe is ready.
 echo.
+if /i "%~1"=="/nopause" goto :eof
 pause
