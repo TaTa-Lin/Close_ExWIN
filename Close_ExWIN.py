@@ -202,6 +202,25 @@ def install_hooks():
     log(f"Hook 已安裝（{len(_hook_handles)} 個）")
     return len(_hook_handles)
 
+_EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+
+def scan_existing_windows():
+    """掃描並處理啟動前已存在的視窗"""
+    def _cb(hwnd, _):
+        if user32.IsWindowVisible(hwnd):
+            title = get_title(hwnd)
+            if title:
+                rule = find_rule(title)
+                if rule:
+                    threading.Thread(
+                        target=do_action,
+                        args=(hwnd, title, rule["action"]),
+                        daemon=True
+                    ).start()
+        return True
+    user32.EnumWindows(_EnumWindowsProc(_cb), 0)
+    log("已掃描現有視窗")
+
 def uninstall_hooks():
     for h in _hook_handles:
         user32.UnhookWinEvent(h)
@@ -448,6 +467,8 @@ if __name__ == "__main__":
             "WinEvent Hook 安裝失敗，程式無法監聽視窗事件。\n請確認以系統管理員身份執行。",
             "Close_ExWin 警告", 0x30)
         log("Hook 安裝失敗，程式終止")
+
+    scan_existing_windows()
 
     # 訊息迴圈跑在子執行緒
     msg_thread = threading.Thread(target=run_message_loop, daemon=True)
