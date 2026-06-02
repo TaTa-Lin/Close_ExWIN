@@ -109,6 +109,7 @@ kernel32 = ctypes.windll.kernel32
 WM_CLOSE   = 0x0010
 WM_KEYDOWN = 0x0100
 WM_KEYUP   = 0x0101
+WM_COMMAND = 0x0111
 BM_CLICK   = 0x00F5
 VK_RETURN  = 0x0D
 VK_TAB     = 0x09
@@ -165,11 +166,12 @@ def press_key(hwnd, vk):
     time.sleep(0.05)
 
 def click_ok_button(hwnd) -> bool:
-    """直接對「確定」按鈕送出 BM_CLICK，不需前景視窗。"""
+    """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
     # 方法 1：標準對話框 IDOK（ID=1）子視窗
     ok_hwnd = user32.GetDlgItem(hwnd, IDOK)
     if ok_hwnd:
-        user32.PostMessageW(ok_hwnd, BM_CLICK, 0, 0)
+        log("  → 找到 IDOK 子視窗，SendMessage BM_CLICK")
+        user32.SendMessageW(ok_hwnd, BM_CLICK, 0, 0)
         return True
     # 方法 2：列舉子視窗，找文字為「確定」或「OK」的按鈕
     found: list[int] = [0]
@@ -182,9 +184,13 @@ def click_ok_button(hwnd) -> bool:
         return True
     user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
     if found[0]:
-        user32.PostMessageW(found[0], BM_CLICK, 0, 0)
+        log("  → 列舉找到確定鈕，SendMessage BM_CLICK")
+        user32.SendMessageW(found[0], BM_CLICK, 0, 0)
         return True
-    return False
+    # 方法 3：直接對對話框送 WM_COMMAND IDOK
+    log("  → 未找到確定鈕子視窗，改送 WM_COMMAND IDOK")
+    user32.PostMessageW(hwnd, WM_COMMAND, IDOK, 0)
+    return True
 
 def do_action(hwnd, title, action):
     parent_hwnd = user32.GetParent(hwnd)
