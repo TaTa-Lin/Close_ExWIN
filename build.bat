@@ -24,7 +24,13 @@ if errorlevel 1 (
 )
 
 echo [2/3] Building EXE...
-"%PYINSTALLER%" --onefile --windowed --clean --name "Close_ExWin" Close_ExWIN.py
+"%PYINSTALLER%" --onefile --windowed --clean --name "Close_ExWin" ^
+    --add-binary "D:\Anaconda3\envs\WinTool\Library\bin\ffi-8.dll;." ^
+    --add-binary "D:\Anaconda3\envs\WinTool\Library\bin\tcl86t.dll;." ^
+    --add-binary "D:\Anaconda3\envs\WinTool\Library\bin\tk86t.dll;." ^
+    --add-data  "D:\Anaconda3\envs\WinTool\Library\lib\tcl8.6;tcl8.6" ^
+    --add-data  "D:\Anaconda3\envs\WinTool\Library\lib\tk8.6;tk8.6" ^
+    Close_ExWIN.py
 if errorlevel 1 (
     echo [ERROR] PyInstaller failed
     pause & exit /b 1
