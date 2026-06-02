@@ -362,7 +362,7 @@ def _settings_window():
 
     root = tk.Tk()
     root.title("Close_ExWin 設定")
-    root.geometry("660x460")
+    root.geometry("660x560")
     root.resizable(True, True)
 
     def on_close():
