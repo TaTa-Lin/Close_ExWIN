@@ -165,19 +165,39 @@ def press_key(hwnd, vk):
     user32.PostMessageW(hwnd, WM_KEYUP,   vk, lp_up)
     time.sleep(0.05)
 
+GWL_ID       = -12
+DM_GETDEFID  = 0x0400
+DC_HASDEFID  = 0x5344
+
 def click_ok_button(hwnd) -> bool:
     """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
-    # 方法 1：標準對話框 IDOK（ID=1）子視窗
+    # 方法 1：DM_GETDEFID 取得預設按鈕 ID（最準確）
+    dm = user32.SendMessageW(hwnd, DM_GETDEFID, 0, 0)
+    if (dm >> 16) == DC_HASDEFID:
+        def_id = dm & 0xFFFF
+        def_hwnd = user32.GetDlgItem(hwnd, def_id)
+        if def_hwnd:
+            log(f"  → DM_GETDEFID id={def_id}，SendMessage BM_CLICK")
+            user32.SendMessageW(def_hwnd, BM_CLICK, 0, 0)
+            return True
+
+    # 方法 2：標準 IDOK（ID=1）子視窗
     ok_hwnd = user32.GetDlgItem(hwnd, IDOK)
     if ok_hwnd:
         log("  → 找到 IDOK 子視窗，SendMessage BM_CLICK")
         user32.SendMessageW(ok_hwnd, BM_CLICK, 0, 0)
         return True
-    # 方法 2：列舉子視窗，找文字為「確定」或「OK」的按鈕
+
+    # 方法 3：列舉子視窗，找文字為「確定」或「OK」的按鈕
     found: list[int] = [0]
+    children: list[str] = []
     def _cb(child: int, _: int) -> bool:
         buf = ctypes.create_unicode_buffer(64)
         user32.GetWindowTextW(child, buf, 64)
+        cls = ctypes.create_unicode_buffer(64)
+        user32.GetClassNameW(child, cls, 64)
+        cid = user32.GetWindowLongW(child, GWL_ID)
+        children.append(f"{buf.value!r}(cls={cls.value},id={cid})")
         if buf.value in ("確定", "OK"):
             found[0] = child
             return False
@@ -187,10 +207,10 @@ def click_ok_button(hwnd) -> bool:
         log("  → 列舉找到確定鈕，SendMessage BM_CLICK")
         user32.SendMessageW(found[0], BM_CLICK, 0, 0)
         return True
-    # 方法 3：直接對對話框送 WM_COMMAND IDOK
-    log("  → 未找到確定鈕子視窗，改送 WM_COMMAND IDOK")
-    user32.PostMessageW(hwnd, WM_COMMAND, IDOK, 0)
-    return True
+
+    # 找不到時記錄所有子視窗，幫助診斷
+    log(f"  → 未找到確定鈕，子視窗清單：{children}")
+    return False
 
 def do_action(hwnd, title, action):
     parent_hwnd = user32.GetParent(hwnd)
@@ -220,6 +240,9 @@ def do_action(hwnd, title, action):
             press_key(hwnd, VK_RETURN)
     except Exception as e:
         log(f"動作失敗：{e}")
+    # 動作送出後重置 cooldown，避免同一視窗立即被再次偵測
+    with _scan_cooldown_lock:
+        _scan_cooldown[hwnd] = time.time()
 
 # ── WinEvent Hook 回呼 ──────────────────────────────────────
 def _on_win_event(hHook, event, hwnd, idObject, idChild, dwThread, dwTime):
