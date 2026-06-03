@@ -34,7 +34,7 @@ DEFAULT_CONFIG = {
     "rules": [
         {"title": "Microsoft Excel",        "match": "exact",    "action": "enter",         "enabled": True},
         {"title": "檔案使用中",              "match": "exact",    "action": "tab_tab_enter", "enabled": True},
-        {"title": "Microsoft Visual Basic", "match": "exact",    "action": "enter",         "enabled": True},
+        {"title": "Microsoft Visual Basic", "match": "exact",    "action": "click_end",     "enabled": True},
         {"title": "Excel",                  "match": "exact",    "action": "close",         "enabled": True},
         {"title": "活頁簿1 - Excel",         "match": "exact",    "action": "close",         "enabled": True},
     ]
@@ -44,6 +44,7 @@ ACTION_LABELS = {
     "enter":         "按 Enter",
     "tab_tab_enter": "按 Tab+Tab+Enter",
     "close":         "強制關閉",
+    "click_end":     "按結束(E)",
 }
 
 MATCH_LABELS = {
@@ -212,6 +213,24 @@ def click_ok_button(hwnd) -> bool:
     log(f"  → 未找到確定鈕，子視窗清單：{children}")
     return False
 
+def click_end_button(hwnd) -> bool:
+    """找到「結束」按鈕並送出 BM_CLICK；找不到則 do nothing。"""
+    found: list[int] = [0]
+    def _cb(child: int, _: int) -> bool:
+        buf = ctypes.create_unicode_buffer(64)
+        user32.GetWindowTextW(child, buf, 64)
+        if "結束" in buf.value:
+            found[0] = child
+            return False
+        return True
+    user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
+    if found[0]:
+        log("  → 找到結束鈕，SendMessage BM_CLICK")
+        user32.SendMessageW(found[0], BM_CLICK, 0, 0)
+        return True
+    log("  → 未找到結束鈕（子視窗列舉為空），不動作")
+    return False
+
 def do_action(hwnd, title, action):
     parent_hwnd = user32.GetParent(hwnd)
     parent_title = get_title(parent_hwnd) if parent_hwnd else ""
@@ -234,6 +253,8 @@ def do_action(hwnd, title, action):
             # 優先用 BM_CLICK 直點按鈕（對 OLE 等待對話框更可靠）
             if not click_ok_button(hwnd):
                 press_key(hwnd, VK_RETURN)
+        elif action == "click_end":
+            click_end_button(hwnd)
         elif action == "tab_tab_enter":
             press_key(hwnd, VK_TAB)
             press_key(hwnd, VK_TAB)
