@@ -15,7 +15,7 @@ import ctypes.wintypes
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageGrab
 
 # ── 路徑 ────────────────────────────────────────────────────
 def get_base_dir():
@@ -25,18 +25,23 @@ def get_base_dir():
 
 BASE_DIR   = get_base_dir()
 CONFIG_FILE = os.path.join(BASE_DIR, "Close_ExWin_config.json")
-LOG_FILE    = os.path.join(BASE_DIR, "Close_ExWin.log")
+LOG_DIR        = os.path.join(BASE_DIR, "logs")
+SCREENSHOT_DIR = os.path.join(LOG_DIR, "screenshots")
+os.makedirs(LOG_DIR,        exist_ok=True)
+os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+LOG_FILE    = os.path.join(LOG_DIR, "Close_ExWin.log")
 
 # ── 預設設定 ────────────────────────────────────────────────
 DEFAULT_CONFIG = {
     "enable_log": True,
+    "enable_screenshot": True,
     "action_delay": 15,
     "rules": [
-        {"title": "Microsoft Excel",        "match": "exact",    "action": "enter",         "enabled": True},
-        {"title": "檔案使用中",              "match": "exact",    "action": "tab_tab_enter", "enabled": True},
-        {"title": "Microsoft Visual Basic", "match": "exact",    "action": "click_end",     "enabled": True},
-        {"title": "Excel",                  "match": "exact",    "action": "close",         "enabled": True},
-        {"title": "活頁簿1 - Excel",         "match": "exact",    "action": "close",         "enabled": True},
+        {"title": "Microsoft Excel",        "match": "exact",    "action": "enter",         "enabled": True,  "screenshot": False},
+        {"title": "檔案使用中",              "match": "exact",    "action": "tab_tab_enter", "enabled": True,  "screenshot": False},
+        {"title": "Microsoft Visual Basic", "match": "exact",    "action": "click_end",     "enabled": True,  "screenshot": True},
+        {"title": "Excel",                  "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
+        {"title": "活頁簿1 - Excel",         "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
     ]
 }
 
@@ -90,6 +95,18 @@ def set_log_enabled(val: bool):
     global _enable_log
     with _enable_log_lock:
         _enable_log = val
+
+_enable_screenshot      = True
+_enable_screenshot_lock = threading.Lock()
+
+def set_screenshot_enabled(val: bool):
+    global _enable_screenshot
+    with _enable_screenshot_lock:
+        _enable_screenshot = val
+
+def is_screenshot_enabled():
+    with _enable_screenshot_lock:
+        return _enable_screenshot
 
 _action_delay      = 3
 _action_delay_lock = threading.Lock()
@@ -235,7 +252,25 @@ def click_end_button(hwnd) -> bool:
     log("  → 未找到結束鈕（子視窗列舉為空），不動作")
     return False
 
-def do_action(hwnd, title, action):
+def capture_window(hwnd: int, title: str) -> None:
+    if not is_screenshot_enabled():
+        return
+    try:
+        rect = ctypes.wintypes.RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return
+        w, h = rect.right - rect.left, rect.bottom - rect.top
+        if w <= 0 or h <= 0:
+            return
+        img = ImageGrab.grab((rect.left, rect.top, rect.right, rect.bottom))
+        safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)[:40]
+        path = os.path.join(SCREENSHOT_DIR, f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.png")
+        img.save(path)
+        log(f"截圖：{path}")
+    except Exception as e:
+        log(f"截圖失敗：{e}")
+
+def do_action(hwnd, title, action, screenshot: bool = False):
     parent_hwnd = user32.GetParent(hwnd)
     parent_title = get_title(parent_hwnd) if parent_hwnd else ""
     log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}  hwnd={hwnd:#010x}")
@@ -249,6 +284,8 @@ def do_action(hwnd, title, action):
         if cur_title != title:
             log(f"不動作（標題已變）：{title!r} → {cur_title!r}  hwnd={hwnd:#010x}")
             return
+    if screenshot:
+        capture_window(hwnd, title)
     log(f"處理：{title}  動作：{action}  hwnd={hwnd:#010x}")
     try:
         if action == "close":
@@ -283,7 +320,7 @@ def _on_win_event(hHook, event, hwnd, idObject, idChild, dwThread, dwTime):
         if rule and _scan_check(hwnd):
             threading.Thread(
                 target=do_action,
-                args=(hwnd, title, rule["action"]),
+                args=(hwnd, title, rule["action"], rule.get("screenshot", False)),
                 daemon=True
             ).start()
     except Exception:
@@ -337,7 +374,7 @@ def _do_enum_scan():
                 if rule and _scan_check(hwnd):
                     threading.Thread(
                         target=do_action,
-                        args=(hwnd, title, rule["action"]),
+                        args=(hwnd, title, rule["action"], rule.get("screenshot", False)),
                         daemon=True
                     ).start()
         return True
@@ -472,6 +509,8 @@ def _settings_window():
     opt_frame.pack(fill="x", padx=8, pady=(6,2))
     log_var = tk.BooleanVar(value=cfg.get("enable_log", True))
     ttk.Checkbutton(opt_frame, text="記錄 Log（Close_ExWin.log）", variable=log_var).pack(anchor="w")
+    screenshot_var = tk.BooleanVar(value=cfg.get("enable_screenshot", True))
+    ttk.Checkbutton(opt_frame, text="動作前截圖（logs/screenshots/）", variable=screenshot_var).pack(anchor="w")
 
     delay_row = ttk.Frame(opt_frame)
     delay_row.pack(anchor="w", pady=(4,0))
@@ -484,16 +523,18 @@ def _settings_window():
     list_frame = ttk.LabelFrame(root, text="視窗規則", padding=8)
     list_frame.pack(fill="both", expand=True, padx=8, pady=6)
 
-    cols = ("enabled", "title", "match", "action")
+    cols = ("enabled", "title", "match", "action", "screenshot")
     tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse")
-    tree.heading("enabled", text="啟用")
-    tree.heading("title",   text="視窗標題")
-    tree.heading("match",   text="比對")
-    tree.heading("action",  text="動作")
-    tree.column("enabled", width=48,  anchor="center")
-    tree.column("title",   width=250)
-    tree.column("match",   width=80,  anchor="center")
-    tree.column("action",  width=140, anchor="center")
+    tree.heading("enabled",    text="啟用")
+    tree.heading("title",      text="視窗標題")
+    tree.heading("match",      text="比對")
+    tree.heading("action",     text="動作")
+    tree.heading("screenshot", text="截圖")
+    tree.column("enabled",    width=48,  anchor="center")
+    tree.column("title",      width=220)
+    tree.column("match",      width=80,  anchor="center")
+    tree.column("action",     width=140, anchor="center")
+    tree.column("screenshot", width=48,  anchor="center")
 
     sb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=sb.set)
@@ -508,6 +549,7 @@ def _settings_window():
                 r["title"],
                 MATCH_LABELS.get(r.get("match","exact"), r.get("match","exact")),
                 ACTION_LABELS.get(r["action"], r["action"]),
+                "✔" if r.get("screenshot", False) else "✘",
             ))
 
     refresh_tree()
@@ -531,7 +573,9 @@ def _settings_window():
                  values=list(ACTION_LABELS.values()), state="readonly").grid(row=1, column=1, sticky="w", padx=4)
 
     enabled_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(ef, text="啟用", variable=enabled_var).grid(row=1, column=2, columnspan=2, sticky="w", padx=(10,0))
+    ttk.Checkbutton(ef, text="啟用", variable=enabled_var).grid(row=1, column=2, sticky="w", padx=(10,0))
+    screenshot_rule_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(ef, text="截圖", variable=screenshot_rule_var).grid(row=1, column=3, sticky="w")
 
     def on_select(event):
         sel = tree.selection()
@@ -542,6 +586,7 @@ def _settings_window():
         match_var.set(MATCH_LABELS.get(r.get("match", "exact"), r.get("match", "exact")))
         action_var.set(ACTION_LABELS.get(r["action"], r["action"]))
         enabled_var.set(r.get("enabled", True))
+        screenshot_rule_var.set(r.get("screenshot", False))
 
     tree.bind("<<TreeviewSelect>>", on_select)
 
@@ -554,9 +599,10 @@ def _settings_window():
             messagebox.showwarning("提示", "請輸入視窗標題", parent=root)
             return
         cfg["rules"].append({"title": t,
-                              "match":   MATCH_KEYS.get(match_var.get(),  match_var.get()),
-                              "action":  ACTION_KEYS.get(action_var.get(), action_var.get()),
-                              "enabled": enabled_var.get()})
+                              "match":      MATCH_KEYS.get(match_var.get(),  match_var.get()),
+                              "action":     ACTION_KEYS.get(action_var.get(), action_var.get()),
+                              "enabled":    enabled_var.get(),
+                              "screenshot": screenshot_rule_var.get()})
         refresh_tree()
 
     def update_rule():
@@ -569,9 +615,10 @@ def _settings_window():
             messagebox.showwarning("提示", "標題不可空白", parent=root)
             return
         cfg["rules"][int(sel[0])] = {"title": t,
-                                       "match":   MATCH_KEYS.get(match_var.get(),  match_var.get()),
-                                       "action":  ACTION_KEYS.get(action_var.get(), action_var.get()),
-                                       "enabled": enabled_var.get()}
+                                       "match":      MATCH_KEYS.get(match_var.get(),  match_var.get()),
+                                       "action":     ACTION_KEYS.get(action_var.get(), action_var.get()),
+                                       "enabled":    enabled_var.get(),
+                                       "screenshot": screenshot_rule_var.get()}
         refresh_tree()
 
     def delete_rule():
@@ -591,6 +638,8 @@ def _settings_window():
     def save_and_close():
         cfg["enable_log"] = log_var.get()
         set_log_enabled(cfg["enable_log"])
+        cfg["enable_screenshot"] = screenshot_var.get()
+        set_screenshot_enabled(cfg["enable_screenshot"])
         cfg["action_delay"] = delay_var.get()
         set_action_delay(cfg["action_delay"])
         with _config_lock:
@@ -612,6 +661,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     set_log_enabled(_config.get("enable_log", True))
+    set_screenshot_enabled(_config.get("enable_screenshot", True))
     set_action_delay(_config.get("action_delay", 3))
     log("Close_ExWin 啟動（WinEvent Hook 模式）")
     if install_hooks() == 0:
