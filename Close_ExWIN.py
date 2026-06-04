@@ -431,12 +431,17 @@ def quit_app(icon, item):
     icon.stop()
     os._exit(0)
 
+def view_log(icon, item):
+    if os.path.exists(LOG_FILE):
+        os.startfile(LOG_FILE)
+
 def run_tray():
     img  = make_icon_image(paused=False)
     menu = pystray.Menu(
         pystray.MenuItem(pause_label, toggle_pause),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("設定", open_settings),
+        pystray.MenuItem("檢視 Log", view_log),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("結束", quit_app),
     )
