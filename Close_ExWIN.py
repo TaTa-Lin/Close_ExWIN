@@ -172,6 +172,7 @@ DC_HASDEFID  = 0x5344
 
 def click_ok_button(hwnd) -> bool:
     """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
+    log("  → enter 動作：優先嘗試 BM_CLICK 點擊確定鈕，失敗才 fallback 按 Enter")
     # 方法 1：DM_GETDEFID 取得預設按鈕 ID（最準確）
     dm = user32.SendMessageW(hwnd, DM_GETDEFID, 0, 0)
     if (dm >> 16) == DC_HASDEFID:
@@ -209,8 +210,11 @@ def click_ok_button(hwnd) -> bool:
         user32.SendMessageW(found[0], BM_CLICK, 0, 0)
         return True
 
-    # 找不到時記錄所有子視窗，幫助診斷
-    log(f"  → 未找到確定鈕，子視窗清單：{children}")
+    # 找不到時記錄所有子視窗、視窗類別與父視窗，幫助診斷
+    cls_buf = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(hwnd, cls_buf, 64)
+    parent = user32.GetParent(hwnd)
+    log(f"  → 未找到確定鈕，子視窗清單：{children}  cls={cls_buf.value}  parent={parent:#010x}")
     return False
 
 def click_end_button(hwnd) -> bool:
@@ -308,18 +312,18 @@ _ChildEnumProc   = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND
 
 _scan_cooldown      = {}   # hwnd -> last_handled_time
 _scan_cooldown_lock = threading.Lock()
-SCAN_COOLDOWN_SEC   = 10.0
 
 def _scan_check(hwnd):
     """回傳 True 表示可以處理（並記錄時間）；False 表示冷卻中，跳過"""
     now = time.time()
+    cooldown = get_action_delay() + 10  # 必須大於 action_delay，否則 delay 期間 cooldown 會提早失效
     with _scan_cooldown_lock:
-        if now - _scan_cooldown.get(hwnd, 0) < SCAN_COOLDOWN_SEC:
+        if now - _scan_cooldown.get(hwnd, 0) < cooldown:
             return False
         _scan_cooldown[hwnd] = now
         # 清除已消失視窗的記錄
         dead = [h for h, t in _scan_cooldown.items()
-                if now - t > SCAN_COOLDOWN_SEC * 2 and not user32.IsWindow(h)]
+                if now - t > cooldown * 2 and not user32.IsWindow(h)]
         for h in dead:
             del _scan_cooldown[h]
         return True
