@@ -472,6 +472,10 @@ def view_log(icon, item):
     if os.path.exists(LOG_FILE):
         os.startfile(LOG_FILE)
 
+def view_screenshots(icon, item):
+    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+    os.startfile(SCREENSHOT_DIR)
+
 def run_tray():
     img  = make_icon_image(paused=False)
     menu = pystray.Menu(
@@ -479,6 +483,7 @@ def run_tray():
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("設定", open_settings),
         pystray.MenuItem("檢視 Log", view_log),
+        pystray.MenuItem("查看截圖", view_screenshots),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("結束", quit_app),
     )
