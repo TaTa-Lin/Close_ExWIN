@@ -29,7 +29,7 @@ LOG_DIR        = os.path.join(BASE_DIR, "logs")
 SCREENSHOT_DIR = os.path.join(LOG_DIR, "screenshots")
 os.makedirs(LOG_DIR,        exist_ok=True)
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-LOG_FILE    = os.path.join(LOG_DIR, "Close_ExWin.log")
+LOG_FILE    = os.path.join(LOG_DIR, f"Close_ExWin_{time.strftime('%Y%m%d_%H%M%S')}.log")
 
 # ── 預設設定 ────────────────────────────────────────────────
 DEFAULT_CONFIG = {
