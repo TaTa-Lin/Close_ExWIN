@@ -186,6 +186,7 @@ def press_key(hwnd, vk):
 GWL_ID       = -12
 DM_GETDEFID  = 0x0400
 DC_HASDEFID  = 0x5344
+GW_OWNER     = 4
 
 def click_ok_button(hwnd) -> bool:
     """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
@@ -252,6 +253,52 @@ def click_end_button(hwnd) -> bool:
     log("  → 未找到結束鈕（子視窗列舉為空），不動作")
     return False
 
+def _handle_dependents(parent_hwnd: int) -> None:
+    """關閉父視窗前，先處理其子視窗及 owned 視窗中符合規則的項目。"""
+    found: list[tuple[int, str, dict]] = []
+
+    def _check(hwnd: int) -> None:
+        if user32.IsWindowVisible(hwnd):
+            t = get_title(hwnd)
+            if t:
+                r = find_rule(t)
+                if r:
+                    found.append((hwnd, t, r))
+
+    def _child_cb(child: int, _: int) -> bool:
+        _check(child)
+        return True
+
+    def _top_cb(hwnd: int, _: int) -> bool:
+        if hwnd != parent_hwnd and user32.GetWindow(hwnd, GW_OWNER) == parent_hwnd:
+            _check(hwnd)
+        return True
+
+    user32.EnumChildWindows(parent_hwnd, _ChildEnumProc(_child_cb), 0)
+    user32.EnumWindows(_EnumWindowsProc(_top_cb), 0)
+
+    for ch, t, r in found:
+        log(f"先處理子/owned 視窗：{t!r}  hwnd={ch:#010x}")
+        try:
+            act = r["action"]
+            if act == "close":
+                user32.PostMessageW(ch, WM_CLOSE, 0, 0)
+            elif act == "enter":
+                if not click_ok_button(ch):
+                    press_key(ch, VK_RETURN)
+            elif act == "click_end":
+                click_end_button(ch)
+            elif act == "tab_tab_enter":
+                press_key(ch, VK_TAB)
+                press_key(ch, VK_TAB)
+                press_key(ch, VK_RETURN)
+        except Exception as e:
+            log(f"子/owned 視窗動作失敗：{e}")
+        with _scan_cooldown_lock:
+            _scan_cooldown[ch] = time.time()
+        time.sleep(0.2)
+
+
 def capture_window(hwnd: int, title: str) -> None:
     if not is_screenshot_enabled():
         return
@@ -289,6 +336,7 @@ def do_action(hwnd, title, action, screenshot: bool = False):
     log(f"處理：{title}  動作：{action}  hwnd={hwnd:#010x}")
     try:
         if action == "close":
+            _handle_dependents(hwnd)
             user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         elif action == "enter":
             # 優先用 BM_CLICK 直點按鈕（對 OLE 等待對話框更可靠）
