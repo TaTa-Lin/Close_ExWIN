@@ -741,6 +741,11 @@ if __name__ == "__main__":
     set_screenshot_enabled(_config.get("enable_screenshot", True))
     set_action_delay(_config.get("action_delay", 3))
     log("Close_ExWin 啟動（WinEvent Hook 模式）")
+    log(f"設定檔：{'存在' if os.path.exists(CONFIG_FILE) else '不存在（使用預設）'}  {CONFIG_FILE}")
+    log(f"action_delay={_config.get('action_delay')}s  log={_config.get('enable_log')}  screenshot={_config.get('enable_screenshot')}")
+    for i, r in enumerate(_config.get("rules", []), 1):
+        status = "✓" if r.get("enabled", True) else "✗"
+        log(f"  規則{i:02d} [{status}] {r['match']:8s} {r['title']!r:40s} → {r['action']}")
     if install_hooks() == 0:
         user32.MessageBoxW(0,
             "WinEvent Hook 安裝失敗，程式無法監聽視窗事件。\n請確認以系統管理員身份執行。",
