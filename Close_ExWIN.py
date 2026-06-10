@@ -218,9 +218,20 @@ def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
 
         uia  = comtypes.client.CreateObject(UIA.CUIAutomation, interface=UIA.IUIAutomation)
         root = uia.ElementFromHandle(hwnd)
-        cond = uia.CreatePropertyCondition(
+
+        # 對話框訊息文字
+        txt_cond = uia.CreatePropertyCondition(
+            UIA.UIA_ControlTypePropertyId, UIA.UIA_TextControlTypeId)
+        texts = root.FindAll(UIA.TreeScope_Descendants, txt_cond)
+        text_parts = [texts.GetElement(i).CurrentName for i in range(texts.Length)
+                      if texts.GetElement(i).CurrentName.strip()]
+        if text_parts:
+            log(f"  → NUIDialog 訊息：{'｜'.join(text_parts)}")
+
+        # 按鈕
+        btn_cond = uia.CreatePropertyCondition(
             UIA.UIA_ControlTypePropertyId, UIA.UIA_ButtonControlTypeId)
-        btns = root.FindAll(UIA.TreeScope_Descendants, cond)
+        btns = root.FindAll(UIA.TreeScope_Descendants, btn_cond)
 
         for i in range(btns.Length):
             names.append(btns.GetElement(i).CurrentName)
@@ -421,7 +432,7 @@ def do_action(hwnd, title, action, screenshot: bool = False):
             return
     if screenshot:
         capture_window(hwnd, title)
-    log(f"處理：{title}  動作：{action}  hwnd={hwnd:#010x}")
+    log(f"處理：{title!r}  動作：{action}  hwnd={hwnd:#010x}")
     try:
         if action == "close":
             if _handle_dependents(hwnd):
