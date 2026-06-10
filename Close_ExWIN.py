@@ -208,25 +208,29 @@ def click_ok_button(hwnd) -> bool:
         user32.SendMessageW(ok_hwnd, BM_CLICK, 0, 0)
         return True
 
-    # 方法 3：列舉子視窗，找文字為「確定」或「OK」的按鈕
-    found: list[int] = [0]
+    # 方法 3：列舉子視窗，找文字為「確定」或「OK」的按鈕；找不到時等 300ms 重試一次
     children: list[str] = []
-    def _cb(child: int, _: int) -> bool:
-        buf = ctypes.create_unicode_buffer(64)
-        user32.GetWindowTextW(child, buf, 64)
-        cls = ctypes.create_unicode_buffer(64)
-        user32.GetClassNameW(child, cls, 64)
-        cid = user32.GetWindowLongW(child, GWL_ID)
-        children.append(f"{buf.value!r}(cls={cls.value},id={cid})")
-        if buf.value in ("確定", "OK"):
-            found[0] = child
-            return False
-        return True
-    user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
-    if found[0]:
-        log("  → 列舉找到確定鈕，SendMessage BM_CLICK")
-        user32.SendMessageW(found[0], BM_CLICK, 0, 0)
-        return True
+    for attempt in range(2):
+        if attempt > 0:
+            time.sleep(0.3)
+        found: list[int] = [0]
+        children = []
+        def _cb(child: int, _: int) -> bool:
+            buf = ctypes.create_unicode_buffer(64)
+            user32.GetWindowTextW(child, buf, 64)
+            cls = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(child, cls, 64)
+            cid = user32.GetWindowLongW(child, GWL_ID)
+            children.append(f"{buf.value!r}(cls={cls.value},id={cid})")
+            if buf.value in ("確定", "OK"):
+                found[0] = child
+                return False
+            return True
+        user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
+        if found[0]:
+            log(f"  → 列舉找到確定鈕（attempt={attempt}），SendMessage BM_CLICK")
+            user32.SendMessageW(found[0], BM_CLICK, 0, 0)
+            return True
 
     # 找不到時記錄所有子視窗、視窗類別與父視窗，幫助診斷
     cls_buf = ctypes.create_unicode_buffer(64)
@@ -320,7 +324,9 @@ def capture_window(hwnd: int, title: str) -> None:
 def do_action(hwnd, title, action, screenshot: bool = False):
     parent_hwnd = user32.GetParent(hwnd)
     parent_title = get_title(parent_hwnd) if parent_hwnd else ""
-    log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}  hwnd={hwnd:#010x}")
+    cls_buf = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(hwnd, cls_buf, 64)
+    log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}  cls={cls_buf.value}  hwnd={hwnd:#010x}")
     delay = get_action_delay()
     if delay > 0:
         time.sleep(delay)
