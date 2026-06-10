@@ -233,6 +233,11 @@ def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
                       if texts.GetElement(i).CurrentName.strip()]
         if text_parts:
             log(f"  → NUIDialog 訊息：{'｜'.join(text_parts)}")
+        # OLE 等待對話框（正在等候...完成 OLE 動作）按取消會引發錯誤，改按確定
+        full_text = "｜".join(text_parts)
+        if "正在等候" in full_text and "OLE" in full_text:
+            priority = ["確定"]
+            log(f"  → 偵測到 OLE 等待，改按「確定」")
 
         # 按鈕
         btn_cond = uia.CreatePropertyCondition(
