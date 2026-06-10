@@ -291,6 +291,9 @@ def _handle_dependents(parent_hwnd: int) -> None:
             elif act == "enter":
                 if not click_ok_button(ch):
                     press_key(ch, VK_RETURN)
+                    time.sleep(0.5)
+                    still = user32.IsWindowVisible(ch)
+                    log(f"  → Enter 後視窗{'仍存在' if still else '已關閉'}（hwnd={ch:#010x}）")
             elif act == "click_end":
                 click_end_button(ch)
             elif act == "tab_tab_enter":
@@ -349,6 +352,9 @@ def do_action(hwnd, title, action, screenshot: bool = False):
             # 優先用 BM_CLICK 直點按鈕（對 OLE 等待對話框更可靠）
             if not click_ok_button(hwnd):
                 press_key(hwnd, VK_RETURN)
+                time.sleep(0.5)
+                still = user32.IsWindowVisible(hwnd)
+                log(f"  → Enter 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
         elif action == "click_end":
             click_end_button(hwnd)
         elif action == "tab_tab_enter":
