@@ -42,6 +42,7 @@ DEFAULT_CONFIG = {
         {"title": "Microsoft Visual Basic", "match": "exact",    "action": "click_end",     "enabled": True,  "screenshot": True},
         {"title": "Excel",                  "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
         {"title": "活頁簿1 - Excel",         "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
+        {"title": "- Excel",                "match": "contains", "action": "close",         "enabled": True,  "screenshot": False},
     ]
 }
 
@@ -194,8 +195,12 @@ def click_ok_button(hwnd) -> bool:
     cls_buf = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(hwnd, cls_buf, 64)
     if cls_buf.value == "NUIDialog":
-        log(f"  → NUIDialog：跳過 BM_CLICK，直接 fallback Enter  hwnd={hwnd:#010x}")
-        return False
+        log(f"  → NUIDialog：嘗試 WM_COMMAND(IDOK)  hwnd={hwnd:#010x}")
+        user32.SendMessageW(hwnd, WM_COMMAND, IDOK, 0)
+        time.sleep(0.5)
+        still = user32.IsWindowVisible(hwnd)
+        log(f"  → WM_COMMAND 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
+        return not still  # 關閉成功回 True；失敗回 False 讓 caller fallback Enter
 
     log("  → enter 動作：優先嘗試 BM_CLICK 點擊確定鈕，失敗才 fallback 按 Enter")
     # 方法 1：DM_GETDEFID 取得預設按鈕 ID（最準確）
