@@ -37,11 +37,12 @@ DEFAULT_CONFIG = {
     "enable_screenshot": True,
     "action_delay": 15,
     "rules": [
-        {"title": "Microsoft Excel",        "match": "exact",    "action": "enter",         "enabled": True,  "screenshot": False},
-        {"title": "檔案使用中",              "match": "exact",    "action": "tab_tab_enter", "enabled": True,  "screenshot": False},
-        {"title": "Microsoft Visual Basic", "match": "exact",    "action": "click_end",     "enabled": True,  "screenshot": True},
-        {"title": "Excel",                  "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
-        {"title": "活頁簿1 - Excel",         "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
+        {"title": "Microsoft Excel",        "match": "exact",    "keyword": "正在等候", "action": "enter",         "buttons": "確定",       "enabled": True,  "screenshot": False},
+        {"title": "Microsoft Excel",        "match": "exact",    "keyword": "",         "action": "enter",         "buttons": "不儲存,取消", "enabled": True,  "screenshot": False},
+        {"title": "檔案使用中",              "match": "exact",    "keyword": "",         "action": "tab_tab_enter", "buttons": "",           "enabled": True,  "screenshot": False},
+        {"title": "Microsoft Visual Basic", "match": "exact",    "keyword": "",         "action": "click_end",     "buttons": "",           "enabled": True,  "screenshot": True},
+        {"title": "Excel",                  "match": "exact",    "keyword": "",         "action": "close",         "buttons": "",           "enabled": True,  "screenshot": False},
+        {"title": "活頁簿1 - Excel",         "match": "exact",    "keyword": "",         "action": "close",         "buttons": "",           "enabled": True,  "screenshot": False},
     ]
 }
 
@@ -171,12 +172,21 @@ def match_title(window_title, rule_title, match_type):
         return rule_title in window_title
     return False
 
-def find_rule(title):
+def find_rule(title: str, content: str = "") -> dict | None:
     with _config_lock:
         rules = _config.get("rules", [])
-    for r in rules:
-        if r.get("enabled", True) and match_title(title, r["title"], r.get("match", "exact")):
-            return r
+    # 先比對有 keyword 的規則（更精確），再比對無 keyword 的規則
+    for has_kw in (True, False):
+        for r in rules:
+            if not r.get("enabled", True):
+                continue
+            kw = r.get("keyword", "")
+            if bool(kw) != has_kw:
+                continue
+            if kw and kw not in content:
+                continue
+            if match_title(title, r["title"], r.get("match", "exact")):
+                return r
     return None
 
 # ── 視窗動作（不需切換前景）─────────────────────────────────
@@ -233,11 +243,14 @@ def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
                       if texts.GetElement(i).CurrentName.strip()]
         if text_parts:
             log(f"  → NUIDialog 訊息：{'｜'.join(text_parts)}")
-        # OLE 等待對話框（正在等候...完成 OLE 動作）按取消會引發錯誤，改按確定
-        full_text = "｜".join(text_parts)
-        if "正在等候" in full_text and "OLE" in full_text:
-            priority = ["確定"]
-            log(f"  → 偵測到 OLE 等待，改按「確定」")
+        # 依規則 keyword 比對內文，取得對應的 buttons 優先序
+        full_text = " ".join(text_parts)
+        nui_title = get_title(hwnd)
+        matched = find_rule(nui_title, full_text)
+        buttons_str = matched.get("buttons", "") if matched else ""
+        if buttons_str:
+            priority = [b.strip() for b in buttons_str.split(",") if b.strip()]
+            log(f"  → 規則比對「{matched.get('keyword','')}」，按鈕順序：{priority}")
 
         # 按鈕
         btn_cond = uia.CreatePropertyCondition(
@@ -706,17 +719,21 @@ def _settings_window():
     list_frame = ttk.LabelFrame(root, text="視窗規則", padding=8)
     list_frame.pack(fill="both", expand=True, padx=8, pady=6)
 
-    cols = ("enabled", "title", "match", "action", "screenshot")
+    cols = ("enabled", "title", "keyword", "match", "action", "buttons", "screenshot")
     tree = ttk.Treeview(list_frame, columns=cols, show="headings", selectmode="browse")
     tree.heading("enabled",    text="啟用")
     tree.heading("title",      text="視窗標題")
+    tree.heading("keyword",    text="關鍵字")
     tree.heading("match",      text="比對")
     tree.heading("action",     text="動作")
+    tree.heading("buttons",    text="按鈕")
     tree.heading("screenshot", text="截圖")
     tree.column("enabled",    width=48,  anchor="center")
-    tree.column("title",      width=220)
-    tree.column("match",      width=80,  anchor="center")
-    tree.column("action",     width=140, anchor="center")
+    tree.column("title",      width=180)
+    tree.column("keyword",    width=120)
+    tree.column("match",      width=72,  anchor="center")
+    tree.column("action",     width=120, anchor="center")
+    tree.column("buttons",    width=100)
     tree.column("screenshot", width=48,  anchor="center")
 
     sb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
@@ -730,8 +747,10 @@ def _settings_window():
             tree.insert("", "end", iid=str(i), values=(
                 "✔" if r.get("enabled", True) else "✘",
                 r["title"],
+                r.get("keyword", ""),
                 MATCH_LABELS.get(r.get("match","exact"), r.get("match","exact")),
                 ACTION_LABELS.get(r["action"], r["action"]),
+                r.get("buttons", ""),
                 "✔" if r.get("screenshot", False) else "✘",
             ))
 
@@ -750,15 +769,23 @@ def _settings_window():
     ttk.Combobox(ef, textvariable=match_var, width=10,
                  values=list(MATCH_LABELS.values()), state="readonly").grid(row=0, column=3, padx=4)
 
-    ttk.Label(ef, text="動作：").grid(row=1, column=0, sticky="w", pady=4)
+    ttk.Label(ef, text="關鍵字：").grid(row=1, column=0, sticky="w", pady=4)
+    keyword_var = tk.StringVar()
+    ttk.Entry(ef, textvariable=keyword_var, width=30).grid(row=1, column=1, sticky="w", padx=4)
+
+    ttk.Label(ef, text="按鈕：").grid(row=1, column=2, sticky="w", padx=(10,0))
+    buttons_rule_var = tk.StringVar()
+    ttk.Entry(ef, textvariable=buttons_rule_var, width=20).grid(row=1, column=3, sticky="w", padx=4)
+
+    ttk.Label(ef, text="動作：").grid(row=2, column=0, sticky="w", pady=4)
     action_var = tk.StringVar(value=ACTION_LABELS["enter"])
     ttk.Combobox(ef, textvariable=action_var, width=18,
-                 values=list(ACTION_LABELS.values()), state="readonly").grid(row=1, column=1, sticky="w", padx=4)
+                 values=list(ACTION_LABELS.values()), state="readonly").grid(row=2, column=1, sticky="w", padx=4)
 
     enabled_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(ef, text="啟用", variable=enabled_var).grid(row=1, column=2, sticky="w", padx=(10,0))
+    ttk.Checkbutton(ef, text="啟用", variable=enabled_var).grid(row=2, column=2, sticky="w", padx=(10,0))
     screenshot_rule_var = tk.BooleanVar(value=False)
-    ttk.Checkbutton(ef, text="截圖", variable=screenshot_rule_var).grid(row=1, column=3, sticky="w")
+    ttk.Checkbutton(ef, text="截圖", variable=screenshot_rule_var).grid(row=2, column=3, sticky="w")
 
     def on_select(event):
         sel = tree.selection()
@@ -766,6 +793,8 @@ def _settings_window():
             return
         r = cfg["rules"][int(sel[0])]
         title_var.set(r["title"])
+        keyword_var.set(r.get("keyword", ""))
+        buttons_rule_var.set(r.get("buttons", ""))
         match_var.set(MATCH_LABELS.get(r.get("match", "exact"), r.get("match", "exact")))
         action_var.set(ACTION_LABELS.get(r["action"], r["action"]))
         enabled_var.set(r.get("enabled", True))
@@ -774,17 +803,19 @@ def _settings_window():
     tree.bind("<<TreeviewSelect>>", on_select)
 
     bf = ttk.Frame(ef)
-    bf.grid(row=2, column=0, columnspan=4, sticky="w", pady=4)
+    bf.grid(row=3, column=0, columnspan=4, sticky="w", pady=4)
 
     def add_rule():
         t = title_var.get().strip()
         if not t:
             messagebox.showwarning("提示", "請輸入視窗標題", parent=root)
             return
-        cfg["rules"].append({"title": t,
-                              "match":      MATCH_KEYS.get(match_var.get(),  match_var.get()),
-                              "action":     ACTION_KEYS.get(action_var.get(), action_var.get()),
-                              "enabled":    enabled_var.get(),
+        cfg["rules"].append({"title":   t,
+                              "match":   MATCH_KEYS.get(match_var.get(), match_var.get()),
+                              "keyword": keyword_var.get().strip(),
+                              "action":  ACTION_KEYS.get(action_var.get(), action_var.get()),
+                              "buttons": buttons_rule_var.get().strip(),
+                              "enabled": enabled_var.get(),
                               "screenshot": screenshot_rule_var.get()})
         refresh_tree()
 
@@ -797,10 +828,12 @@ def _settings_window():
         if not t:
             messagebox.showwarning("提示", "標題不可空白", parent=root)
             return
-        cfg["rules"][int(sel[0])] = {"title": t,
-                                       "match":      MATCH_KEYS.get(match_var.get(),  match_var.get()),
-                                       "action":     ACTION_KEYS.get(action_var.get(), action_var.get()),
-                                       "enabled":    enabled_var.get(),
+        cfg["rules"][int(sel[0])] = {"title":   t,
+                                       "match":   MATCH_KEYS.get(match_var.get(), match_var.get()),
+                                       "keyword": keyword_var.get().strip(),
+                                       "action":  ACTION_KEYS.get(action_var.get(), action_var.get()),
+                                       "buttons": buttons_rule_var.get().strip(),
+                                       "enabled": enabled_var.get(),
                                        "screenshot": screenshot_rule_var.get()}
         refresh_tree()
 
