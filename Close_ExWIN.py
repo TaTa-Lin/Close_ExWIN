@@ -197,7 +197,7 @@ GW_OWNER     = 4
 _UIA_PRIORITY = ["不儲存", "取消"]
 
 def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
-    """用 IUIAutomation 列出 NUIDialog 按鈕並依優先序點擊。回傳 (成功, 按鈕名列表)。"""
+    """用 IUIAutomation 列出 NUIDialog 按鈕並依優先序點擊。回傳 (點擊的按鈕名或 None, 按鈕名列表)。"""
     names: list[str] = []
     try:
         import sys, os, tempfile
@@ -241,10 +241,10 @@ def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
                 if btn.CurrentName == target:
                     pat = btn.GetCurrentPattern(UIA.UIA_InvokePatternId)
                     pat.QueryInterface(UIA.IUIAutomationInvokePattern).Invoke()
-                    return True, names
+                    return target, names
     except Exception as e:
         log(f"  → UIA 錯誤：{e}")
-    return False, names
+    return None, names
 
 def click_ok_button(hwnd) -> bool:
     """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
@@ -252,14 +252,14 @@ def click_ok_button(hwnd) -> bool:
     cls_buf = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(hwnd, cls_buf, 64)
     if cls_buf.value == "NUIDialog":
-        clicked, btn_names = _uia_click_button(hwnd, _UIA_PRIORITY)
+        clicked_name, btn_names = _uia_click_button(hwnd, _UIA_PRIORITY)
         log(f"  → NUIDialog UIA 按鈕：{btn_names}")
-        if clicked:
+        if clicked_name:
             time.sleep(0.5)
             if not user32.IsWindowVisible(hwnd):
-                log(f"  → UIA 點擊後視窗已關閉（hwnd={hwnd:#010x}）")
+                log(f"  → UIA 點擊「{clicked_name}」後視窗已關閉（hwnd={hwnd:#010x}）")
                 return True
-            log(f"  → UIA 點擊後視窗仍存在（hwnd={hwnd:#010x}）")
+            log(f"  → UIA 點擊「{clicked_name}」後視窗仍存在（hwnd={hwnd:#010x}）")
         # UIA 失敗時 fallback
         for cmd_id, label in ((IDNO, "IDNO"), (IDOK, "IDOK")):
             log(f"  → NUIDialog：嘗試 WM_COMMAND({label})  hwnd={hwnd:#010x}")
