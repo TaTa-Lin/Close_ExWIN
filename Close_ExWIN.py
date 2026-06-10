@@ -197,23 +197,29 @@ GW_OWNER     = 4
 # UI Automation 按鈕優先序：先試「不儲存」，讀不到再試「取消」
 _UIA_PRIORITY = ["不儲存", "取消"]
 
-def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
-    """用 IUIAutomation 列出 NUIDialog 按鈕並依優先序點擊。回傳 (點擊的按鈕名或 None, 按鈕名列表)。"""
-    names: list[str] = []
+def _uia_preload() -> None:
+    """啟動時預載 UIAutomationClient 型別庫，避免首次使用時延遲。"""
     try:
-        import sys, os, tempfile
+        import tempfile
         import comtypes.client
         import comtypes
-
-        # 凍結 EXE 時 comtypes 無法寫入 package 目錄，改用 temp dir
         if getattr(sys, "frozen", False):
             gd = os.path.join(tempfile.gettempdir(), "comtypes_gen")
             os.makedirs(gd, exist_ok=True)
             comtypes.client.gen_dir = gd
-
-        comtypes.CoInitialize()
         comtypes.client.GetModule((
             comtypes.GUID("{944DE083-8FB8-45CF-BCB7-C477ACB2F897}"), 1, 0))
+    except Exception as e:
+        log(f"UIA 預載失敗：{e}")
+
+def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
+    """用 IUIAutomation 列出 NUIDialog 按鈕並依優先序點擊。回傳 (點擊的按鈕名或 None, 按鈕名列表)。"""
+    names: list[str] = []
+    try:
+        import comtypes.client
+        import comtypes
+
+        comtypes.CoInitialize()  # 每個 worker thread 各自初始化
         from comtypes.gen import UIAutomationClient as UIA
 
         uia  = comtypes.client.CreateObject(UIA.CUIAutomation, interface=UIA.IUIAutomation)
@@ -836,6 +842,7 @@ if __name__ == "__main__":
     set_screenshot_enabled(_config.get("enable_screenshot", True))
     set_action_delay(_config.get("action_delay", 3))
     log("Close_ExWin 啟動（WinEvent Hook 模式）")
+    _uia_preload()
     log(f"設定檔：{'存在' if os.path.exists(CONFIG_FILE) else '不存在（使用預設）'}  {CONFIG_FILE}")
     log(f"action_delay={_config.get('action_delay')}s  log={_config.get('enable_log')}  screenshot={_config.get('enable_screenshot')}")
     for i, r in enumerate(_config.get("rules", []), 1):
