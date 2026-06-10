@@ -190,6 +190,13 @@ GW_OWNER     = 4
 
 def click_ok_button(hwnd) -> bool:
     """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
+    # NUIDialog 是 Office 現代 UI 框架，無標準 Win32 子視窗按鈕，BM_CLICK 無效
+    cls_buf = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(hwnd, cls_buf, 64)
+    if cls_buf.value == "NUIDialog":
+        log("  → NUIDialog：跳過 BM_CLICK，直接 fallback Enter")
+        return False
+
     log("  → enter 動作：優先嘗試 BM_CLICK 點擊確定鈕，失敗才 fallback 按 Enter")
     # 方法 1：DM_GETDEFID 取得預設按鈕 ID（最準確）
     dm = user32.SendMessageW(hwnd, DM_GETDEFID, 0, 0)
@@ -208,33 +215,27 @@ def click_ok_button(hwnd) -> bool:
         user32.SendMessageW(ok_hwnd, BM_CLICK, 0, 0)
         return True
 
-    # 方法 3：列舉子視窗，找文字為「確定」或「OK」的按鈕；找不到時等 300ms 重試一次
+    # 方法 3：列舉子視窗，找文字為「確定」或「OK」的按鈕
+    found: list[int] = [0]
     children: list[str] = []
-    for attempt in range(2):
-        if attempt > 0:
-            time.sleep(0.3)
-        found: list[int] = [0]
-        children = []
-        def _cb(child: int, _: int) -> bool:
-            buf = ctypes.create_unicode_buffer(64)
-            user32.GetWindowTextW(child, buf, 64)
-            cls = ctypes.create_unicode_buffer(64)
-            user32.GetClassNameW(child, cls, 64)
-            cid = user32.GetWindowLongW(child, GWL_ID)
-            children.append(f"{buf.value!r}(cls={cls.value},id={cid})")
-            if buf.value in ("確定", "OK"):
-                found[0] = child
-                return False
-            return True
-        user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
-        if found[0]:
-            log(f"  → 列舉找到確定鈕（attempt={attempt}），SendMessage BM_CLICK")
-            user32.SendMessageW(found[0], BM_CLICK, 0, 0)
-            return True
+    def _cb(child: int, _: int) -> bool:
+        buf = ctypes.create_unicode_buffer(64)
+        user32.GetWindowTextW(child, buf, 64)
+        cls = ctypes.create_unicode_buffer(64)
+        user32.GetClassNameW(child, cls, 64)
+        cid = user32.GetWindowLongW(child, GWL_ID)
+        children.append(f"{buf.value!r}(cls={cls.value},id={cid})")
+        if buf.value in ("確定", "OK"):
+            found[0] = child
+            return False
+        return True
+    user32.EnumChildWindows(hwnd, _ChildEnumProc(_cb), 0)
+    if found[0]:
+        log("  → 列舉找到確定鈕，SendMessage BM_CLICK")
+        user32.SendMessageW(found[0], BM_CLICK, 0, 0)
+        return True
 
     # 找不到時記錄所有子視窗、視窗類別與父視窗，幫助診斷
-    cls_buf = ctypes.create_unicode_buffer(64)
-    user32.GetClassNameW(hwnd, cls_buf, 64)
     parent = user32.GetParent(hwnd)
     log(f"  → 未找到確定鈕，子視窗清單：{children}  cls={cls_buf.value}  parent={parent:#010x}")
     return False
