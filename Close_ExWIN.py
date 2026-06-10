@@ -194,12 +194,63 @@ DM_GETDEFID  = 0x0400
 DC_HASDEFID  = 0x5344
 GW_OWNER     = 4
 
+# UI Automation 按鈕優先序：先試「不儲存」，讀不到再試「取消」
+_UIA_PRIORITY = ["不儲存", "取消"]
+
+def _uia_click_button(hwnd: int, priority: list[str]) -> tuple[bool, list[str]]:
+    """用 IUIAutomation 列出 NUIDialog 按鈕並依優先序點擊。回傳 (成功, 按鈕名列表)。"""
+    names: list[str] = []
+    try:
+        import sys, os, tempfile
+        import comtypes.client
+        import comtypes
+
+        # 凍結 EXE 時 comtypes 無法寫入 package 目錄，改用 temp dir
+        if getattr(sys, "frozen", False):
+            gd = os.path.join(tempfile.gettempdir(), "comtypes_gen")
+            os.makedirs(gd, exist_ok=True)
+            comtypes.client.gen_dir = gd
+
+        comtypes.CoInitialize()
+        comtypes.client.GetModule((
+            comtypes.GUID("{944DE083-8FB8-45CF-BCB7-C477ACB2F897}"), 1, 0))
+        from comtypes.gen import UIAutomationClient as UIA
+
+        uia  = comtypes.client.CreateObject(UIA.CUIAutomation, interface=UIA.IUIAutomation)
+        root = uia.ElementFromHandle(hwnd)
+        cond = uia.CreatePropertyCondition(
+            UIA.UIA_ControlTypePropertyId, UIA.UIA_ButtonControlTypeId)
+        btns = root.FindAll(UIA.TreeScope_Descendants, cond)
+
+        for i in range(btns.Length):
+            names.append(btns.GetElement(i).CurrentName)
+
+        for target in priority:
+            for i in range(btns.Length):
+                btn = btns.GetElement(i)
+                if btn.CurrentName == target:
+                    pat = btn.GetCurrentPattern(UIA.UIA_InvokePatternId)
+                    pat.QueryInterface(UIA.IUIAutomationInvokePattern).Invoke()
+                    return True, names
+    except Exception as e:
+        log(f"  → UIA 錯誤：{e}")
+    return False, names
+
 def click_ok_button(hwnd) -> bool:
     """對「確定」按鈕送出 BM_CLICK（SendMessage，跨執行緒同步）。"""
     # NUIDialog 是 Office 現代 UI 框架，無標準 Win32 子視窗按鈕，BM_CLICK 無效
     cls_buf = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(hwnd, cls_buf, 64)
     if cls_buf.value == "NUIDialog":
+        clicked, btn_names = _uia_click_button(hwnd, _UIA_PRIORITY)
+        log(f"  → NUIDialog UIA 按鈕：{btn_names}")
+        if clicked:
+            time.sleep(0.5)
+            if not user32.IsWindowVisible(hwnd):
+                log(f"  → UIA 點擊後視窗已關閉（hwnd={hwnd:#010x}）")
+                return True
+            log(f"  → UIA 點擊後視窗仍存在（hwnd={hwnd:#010x}）")
+        # UIA 失敗時 fallback
         for cmd_id, label in ((IDNO, "IDNO"), (IDOK, "IDOK")):
             log(f"  → NUIDialog：嘗試 WM_COMMAND({label})  hwnd={hwnd:#010x}")
             user32.SendMessageW(hwnd, WM_COMMAND, cmd_id, 0)
