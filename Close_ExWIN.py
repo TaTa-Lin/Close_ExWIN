@@ -42,7 +42,6 @@ DEFAULT_CONFIG = {
         {"title": "Microsoft Visual Basic", "match": "exact",    "action": "click_end",     "enabled": True,  "screenshot": True},
         {"title": "Excel",                  "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
         {"title": "活頁簿1 - Excel",         "match": "exact",    "action": "close",         "enabled": True,  "screenshot": False},
-        {"title": "- Excel",                "match": "contains", "action": "close",         "enabled": True,  "screenshot": False},
     ]
 }
 
