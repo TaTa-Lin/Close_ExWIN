@@ -67,9 +67,6 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-            # 規則永遠以程式碼為準，強制覆蓋本地設定檔的 rules
-            cfg["rules"] = json.loads(json.dumps(DEFAULT_CONFIG["rules"]))
-            save_config(cfg)
             return cfg
         except Exception:
             pass

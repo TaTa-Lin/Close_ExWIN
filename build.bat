@@ -30,6 +30,9 @@ echo [2/3] Building EXE...
     --add-binary "D:\Anaconda3\envs\WinTool\Library\bin\tk86t.dll;." ^
     --add-data  "D:\Anaconda3\envs\WinTool\Library\lib\tcl8.6;tcl8.6" ^
     --add-data  "D:\Anaconda3\envs\WinTool\Library\lib\tk8.6;tk8.6" ^
+    --hidden-import comtypes.client ^
+    --hidden-import comtypes.gen.UIAutomationClient ^
+    --collect-submodules comtypes ^
     Close_ExWIN.py
 if errorlevel 1 (
     echo [ERROR] PyInstaller failed
