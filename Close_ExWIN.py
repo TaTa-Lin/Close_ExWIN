@@ -407,7 +407,8 @@ def do_action(hwnd, title, action, screenshot: bool = False):
     parent_title = get_title(parent_hwnd) if parent_hwnd else ""
     cls_buf = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(hwnd, cls_buf, 64)
-    log(f"偵測到：{title}  父視窗：{parent_title or '(無)'}(hwnd={parent_hwnd:#010x})  cls={cls_buf.value}  hwnd={hwnd:#010x}")
+    parent_info = f"  父視窗：{parent_title}(hwnd={parent_hwnd:#010x})" if parent_hwnd else ""
+    log(f"偵測到：{title}{parent_info}  cls={cls_buf.value}  hwnd={hwnd:#010x}")
     delay = get_action_delay()
     if delay > 0:
         time.sleep(delay)
