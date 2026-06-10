@@ -270,8 +270,9 @@ def click_end_button(hwnd) -> bool:
     log("  → 未找到結束鈕（子視窗列舉為空），不動作")
     return False
 
-def _handle_dependents(parent_hwnd: int) -> None:
-    """關閉父視窗前，先處理其子視窗及 owned 視窗中符合規則的項目。"""
+def _handle_dependents(parent_hwnd: int) -> bool:
+    """關閉父視窗前，先處理其子視窗及 owned 視窗中符合規則的項目。
+    回傳 True 表示所有子視窗已處理（或無子視窗），False 表示有子視窗未能關閉。"""
     found: list[tuple[int, str, dict]] = []
 
     def _check(hwnd: int) -> None:
@@ -294,18 +295,21 @@ def _handle_dependents(parent_hwnd: int) -> None:
     user32.EnumChildWindows(parent_hwnd, _ChildEnumProc(_child_cb), 0)
     user32.EnumWindows(_EnumWindowsProc(_top_cb), 0)
 
+    all_closed = True
     for ch, t, r in found:
         log(f"先處理子/owned 視窗：{t!r}  hwnd={ch:#010x}")
+        ch_closed = True
         try:
             act = r["action"]
             if act == "close":
                 user32.PostMessageW(ch, WM_CLOSE, 0, 0)
             elif act == "enter":
-                if not click_ok_button(ch):
+                ch_closed = click_ok_button(ch)
+                if not ch_closed:
                     press_key(ch, VK_RETURN)
                     time.sleep(0.5)
-                    still = user32.IsWindowVisible(ch)
-                    log(f"  → Enter 後視窗{'仍存在' if still else '已關閉'}（hwnd={ch:#010x}）")
+                    ch_closed = not user32.IsWindowVisible(ch)
+                    log(f"  → Enter 後視窗{'仍存在' if not ch_closed else '已關閉'}（hwnd={ch:#010x}）")
             elif act == "click_end":
                 click_end_button(ch)
             elif act == "tab_tab_enter":
@@ -314,9 +318,13 @@ def _handle_dependents(parent_hwnd: int) -> None:
                 press_key(ch, VK_RETURN)
         except Exception as e:
             log(f"子/owned 視窗動作失敗：{e}")
+            ch_closed = False
+        if not ch_closed:
+            all_closed = False
         with _scan_cooldown_lock:
             _scan_cooldown[ch] = time.time()
         time.sleep(0.2)
+    return all_closed
 
 
 def capture_window(hwnd: int, title: str) -> None:
@@ -358,8 +366,10 @@ def do_action(hwnd, title, action, screenshot: bool = False):
     log(f"處理：{title}  動作：{action}  hwnd={hwnd:#010x}")
     try:
         if action == "close":
-            _handle_dependents(hwnd)
-            user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            if _handle_dependents(hwnd):
+                user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            else:
+                log(f"  → 子視窗未全部關閉，暫緩關閉父視窗  hwnd={hwnd:#010x}")
         elif action == "enter":
             # 優先用 BM_CLICK 直點按鈕（對 OLE 等待對話框更可靠）
             closed = click_ok_button(hwnd)
@@ -368,11 +378,6 @@ def do_action(hwnd, title, action, screenshot: bool = False):
                 time.sleep(0.5)
                 closed = not user32.IsWindowVisible(hwnd)
                 log(f"  → Enter 後視窗{'仍存在' if not closed else '已關閉'}（hwnd={hwnd:#010x}）")
-            if not closed and parent_hwnd:
-                pr = find_rule(get_title(parent_hwnd))
-                if pr and pr["action"] == "close":
-                    log(f"  → 子視窗無法關閉，改關父視窗  hwnd={parent_hwnd:#010x}")
-                    user32.PostMessageW(parent_hwnd, WM_CLOSE, 0, 0)
         elif action == "click_end":
             click_end_button(hwnd)
         elif action == "tab_tab_enter":
@@ -396,7 +401,7 @@ def _on_win_event(hHook, event, hwnd, idObject, idChild, dwThread, dwTime):
         if not title:
             return
         rule = find_rule(title)
-        if rule and _scan_check(hwnd):
+        if rule and not _parent_has_close_rule(hwnd) and _scan_check(hwnd):
             threading.Thread(
                 target=do_action,
                 args=(hwnd, title, rule["action"], rule.get("screenshot", False)),
@@ -444,13 +449,21 @@ def _scan_check(hwnd):
             del _scan_cooldown[h]
         return True
 
+def _parent_has_close_rule(hwnd: int) -> bool:
+    """父/owner 視窗有 close 規則時回傳 True，由 _handle_dependents 統一處理。"""
+    p = user32.GetParent(hwnd)
+    if not p:
+        return False
+    r = find_rule(get_title(p))
+    return r is not None and r.get("action") == "close"
+
 def _do_enum_scan():
     def _cb(hwnd, _):
         if user32.IsWindowVisible(hwnd):
             title = get_title(hwnd)
             if title:
                 rule = find_rule(title)
-                if rule and _scan_check(hwnd):
+                if rule and not _parent_has_close_rule(hwnd) and _scan_check(hwnd):
                     threading.Thread(
                         target=do_action,
                         args=(hwnd, title, rule["action"], rule.get("screenshot", False)),
