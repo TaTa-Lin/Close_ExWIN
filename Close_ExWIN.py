@@ -401,10 +401,16 @@ def capture_window(hwnd: int, title: str) -> None:
         rect = ctypes.wintypes.RECT()
         if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
             return
-        w, h = rect.right - rect.left, rect.bottom - rect.top
-        if w <= 0 or h <= 0:
+        # GetWindowRect 回傳邏輯像素；ImageGrab 使用實體像素，需乘上 DPI 縮放比
+        dpi = user32.GetDpiForWindow(hwnd) or 96
+        scale = dpi / 96.0
+        left   = int(rect.left   * scale)
+        top    = int(rect.top    * scale)
+        right  = int(rect.right  * scale)
+        bottom = int(rect.bottom * scale)
+        if right - left <= 0 or bottom - top <= 0:
             return
-        img = ImageGrab.grab((rect.left, rect.top, rect.right, rect.bottom))
+        img = ImageGrab.grab((left, top, right, bottom))
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)[:40]
         path = os.path.join(SCREENSHOT_DIR, f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.png")
         img.save(path)
