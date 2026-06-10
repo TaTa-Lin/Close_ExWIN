@@ -86,6 +86,7 @@ logging.basicConfig(
     datefmt="%m/%d %H:%M:%S",
     encoding="utf-8"
 )
+logging.getLogger("comtypes").setLevel(logging.WARNING)
 
 _enable_log      = True
 _enable_log_lock = threading.Lock()
