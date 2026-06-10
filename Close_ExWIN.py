@@ -194,7 +194,7 @@ def click_ok_button(hwnd) -> bool:
     cls_buf = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(hwnd, cls_buf, 64)
     if cls_buf.value == "NUIDialog":
-        log("  → NUIDialog：跳過 BM_CLICK，直接 fallback Enter")
+        log(f"  → NUIDialog：跳過 BM_CLICK，直接 fallback Enter  hwnd={hwnd:#010x}")
         return False
 
     log("  → enter 動作：優先嘗試 BM_CLICK 點擊確定鈕，失敗才 fallback 按 Enter")
