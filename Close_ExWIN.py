@@ -66,7 +66,14 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                cfg = json.load(f)
+            # 補上 DEFAULT_CONFIG 有但舊 config 缺少的規則（以 title+match 為 key）
+            existing = {(r["title"], r["match"]) for r in cfg.get("rules", [])}
+            added = [r for r in DEFAULT_CONFIG["rules"] if (r["title"], r["match"]) not in existing]
+            if added:
+                cfg.setdefault("rules", []).extend(added)
+                save_config(cfg)
+            return cfg
         except Exception:
             pass
     return json.loads(json.dumps(DEFAULT_CONFIG))
