@@ -664,7 +664,7 @@ def _settings_window():
     log_var = tk.BooleanVar(value=cfg.get("enable_log", True))
     ttk.Checkbutton(opt_frame, text="記錄 Log（Close_ExWin.log）", variable=log_var).pack(anchor="w")
     screenshot_var = tk.BooleanVar(value=cfg.get("enable_screenshot", True))
-    ttk.Checkbutton(opt_frame, text="動作前截圖（logs/screenshots/）", variable=screenshot_var).pack(anchor="w")
+    ttk.Checkbutton(opt_frame, text="截圖開關（關閉時全不截圖；開啟時依各規則設定）", variable=screenshot_var).pack(anchor="w")
 
     delay_row = ttk.Frame(opt_frame)
     delay_row.pack(anchor="w", pady=(4,0))
