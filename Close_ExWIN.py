@@ -137,6 +137,7 @@ BM_CLICK   = 0x00F5
 VK_RETURN  = 0x0D
 VK_TAB     = 0x09
 IDOK       = 1
+IDNO       = 7
 
 EVENT_SYSTEM_FOREGROUND   = 0x0003
 EVENT_OBJECT_SHOW         = 0x8002
@@ -199,18 +200,19 @@ def click_ok_button(hwnd) -> bool:
     cls_buf = ctypes.create_unicode_buffer(64)
     user32.GetClassNameW(hwnd, cls_buf, 64)
     if cls_buf.value == "NUIDialog":
-        log(f"  → NUIDialog：嘗試 WM_COMMAND(IDOK)  hwnd={hwnd:#010x}")
-        user32.SendMessageW(hwnd, WM_COMMAND, IDOK, 0)
+        for cmd_id, label in ((IDNO, "IDNO"), (IDOK, "IDOK")):
+            log(f"  → NUIDialog：嘗試 WM_COMMAND({label})  hwnd={hwnd:#010x}")
+            user32.SendMessageW(hwnd, WM_COMMAND, cmd_id, 0)
+            time.sleep(0.5)
+            if not user32.IsWindowVisible(hwnd):
+                log(f"  → WM_COMMAND({label}) 後視窗已關閉（hwnd={hwnd:#010x}）")
+                return True
+            log(f"  → WM_COMMAND({label}) 後視窗仍存在（hwnd={hwnd:#010x}）")
+        log(f"  → NUIDialog：嘗試 WM_CLOSE  hwnd={hwnd:#010x}")
+        user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         time.sleep(0.5)
         still = user32.IsWindowVisible(hwnd)
-        if still:
-            log(f"  → WM_COMMAND 後視窗仍存在（hwnd={hwnd:#010x}），嘗試 WM_CLOSE")
-            user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
-            time.sleep(0.5)
-            still = user32.IsWindowVisible(hwnd)
-            log(f"  → WM_CLOSE 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
-        else:
-            log(f"  → WM_COMMAND 後視窗已關閉（hwnd={hwnd:#010x}）")
+        log(f"  → WM_CLOSE 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
         return not still  # 關閉成功回 True；失敗回 False 讓 caller fallback Enter
 
     log("  → enter 動作：優先嘗試 BM_CLICK 點擊確定鈕，失敗才 fallback 按 Enter")
