@@ -355,11 +355,17 @@ def do_action(hwnd, title, action, screenshot: bool = False):
             user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         elif action == "enter":
             # 優先用 BM_CLICK 直點按鈕（對 OLE 等待對話框更可靠）
-            if not click_ok_button(hwnd):
+            closed = click_ok_button(hwnd)
+            if not closed:
                 press_key(hwnd, VK_RETURN)
                 time.sleep(0.5)
-                still = user32.IsWindowVisible(hwnd)
-                log(f"  → Enter 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
+                closed = not user32.IsWindowVisible(hwnd)
+                log(f"  → Enter 後視窗{'仍存在' if not closed else '已關閉'}（hwnd={hwnd:#010x}）")
+            if not closed and parent_hwnd:
+                pr = find_rule(get_title(parent_hwnd))
+                if pr and pr["action"] == "close":
+                    log(f"  → 子視窗無法關閉，改關父視窗  hwnd={parent_hwnd:#010x}")
+                    user32.PostMessageW(parent_hwnd, WM_CLOSE, 0, 0)
         elif action == "click_end":
             click_end_button(hwnd)
         elif action == "tab_tab_enter":
