@@ -203,7 +203,14 @@ def click_ok_button(hwnd) -> bool:
         user32.SendMessageW(hwnd, WM_COMMAND, IDOK, 0)
         time.sleep(0.5)
         still = user32.IsWindowVisible(hwnd)
-        log(f"  → WM_COMMAND 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
+        if still:
+            log(f"  → WM_COMMAND 後視窗仍存在（hwnd={hwnd:#010x}），嘗試 WM_CLOSE")
+            user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            time.sleep(0.5)
+            still = user32.IsWindowVisible(hwnd)
+            log(f"  → WM_CLOSE 後視窗{'仍存在' if still else '已關閉'}（hwnd={hwnd:#010x}）")
+        else:
+            log(f"  → WM_COMMAND 後視窗已關閉（hwnd={hwnd:#010x}）")
         return not still  # 關閉成功回 True；失敗回 False 讓 caller fallback Enter
 
     log("  → enter 動作：優先嘗試 BM_CLICK 點擊確定鈕，失敗才 fallback 按 Enter")
