@@ -386,10 +386,10 @@ def _handle_dependents(parent_hwnd: int) -> bool:
 
     all_closed = True
     for ch, t, r in found:
-        log(f"先處理子/owned 視窗：{t!r}  hwnd={ch:#010x}")
         ch_closed = True
         try:
             act = r["action"]
+            log(f"先處理子/owned 視窗：{t!r}  hwnd={ch:#010x}  動作：{act}")
             if act == "close":
                 user32.PostMessageW(ch, WM_CLOSE, 0, 0)
             elif act == "enter":
