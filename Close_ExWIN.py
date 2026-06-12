@@ -15,7 +15,7 @@ import ctypes.wintypes
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pystray
-from PIL import Image, ImageDraw, ImageGrab
+from PIL import Image, ImageDraw
 
 # ── 路徑 ────────────────────────────────────────────────────
 def get_base_dir():
@@ -416,6 +416,21 @@ def _handle_dependents(parent_hwnd: int) -> bool:
     return all_closed
 
 
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize",          ctypes.c_uint32),
+        ("biWidth",         ctypes.c_int32),
+        ("biHeight",        ctypes.c_int32),
+        ("biPlanes",        ctypes.c_uint16),
+        ("biBitCount",      ctypes.c_uint16),
+        ("biCompression",   ctypes.c_uint32),
+        ("biSizeImage",     ctypes.c_uint32),
+        ("biXPelsPerMeter", ctypes.c_int32),
+        ("biYPelsPerMeter", ctypes.c_int32),
+        ("biClrUsed",       ctypes.c_uint32),
+        ("biClrImportant",  ctypes.c_uint32),
+    ]
+
 def capture_window(hwnd: int, title: str) -> None:
     if not is_screenshot_enabled():
         return
@@ -423,9 +438,37 @@ def capture_window(hwnd: int, title: str) -> None:
         rect = ctypes.wintypes.RECT()
         if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
             return
-        if rect.right - rect.left <= 0 or rect.bottom - rect.top <= 0:
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+        if w <= 0 or h <= 0:
             return
-        img = ImageGrab.grab((rect.left, rect.top, rect.right, rect.bottom))
+
+        gdi32   = ctypes.windll.gdi32
+        hwnd_dc = user32.GetWindowDC(hwnd)
+        mem_dc  = gdi32.CreateCompatibleDC(hwnd_dc)
+        bitmap  = gdi32.CreateCompatibleBitmap(hwnd_dc, w, h)
+        gdi32.SelectObject(mem_dc, bitmap)
+
+        PW_RENDERFULLCONTENT = 0x2
+        user32.PrintWindow(hwnd, mem_dc, PW_RENDERFULLCONTENT)
+
+        bmi = _BITMAPINFOHEADER()
+        bmi.biSize        = ctypes.sizeof(_BITMAPINFOHEADER)
+        bmi.biWidth       = w
+        bmi.biHeight      = -h   # 負值 = top-down
+        bmi.biPlanes      = 1
+        bmi.biBitCount    = 32
+        bmi.biCompression = 0    # BI_RGB
+
+        buf = (ctypes.c_char * (w * h * 4))()
+        gdi32.GetDIBits(mem_dc, bitmap, 0, h, buf, ctypes.byref(bmi), 0)
+
+        img = Image.frombytes("RGBA", (w, h), bytes(buf), "raw", "BGRA").convert("RGB")
+
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(mem_dc)
+        user32.ReleaseDC(hwnd, hwnd_dc)
+
         safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)[:40]
         path = os.path.join(SCREENSHOT_DIR, f"{time.strftime('%Y%m%d_%H%M%S')}_{safe}.png")
         img.save(path)
